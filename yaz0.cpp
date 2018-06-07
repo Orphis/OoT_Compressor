@@ -1,8 +1,11 @@
+#include <stdio.h>
 #include <stdint.h>
 #include <stdlib.h>
 #include <string.h>
 #include "tables.h"
 #include "readwrite.h"
+
+#include "yaz0.h"
 
 typedef uint8_t  u8;
 typedef uint16_t u16;
@@ -182,16 +185,10 @@ yaz0_encode_internal(u8* src, int srcSize, u8 * Data)
   return dstSize;
 }
 
-void
-yaz0_encode(u8 * src, int src_size, u8 *dst, int *dst_size )
+std::vector<uint8_t> yaz0_encode(u8 * src, int src_size)
 {
-  //check for minimum size
-  if(*dst_size < src_size + 0x20)
-  {
-      perror("yaz0_encode: Bad size\n");
-      *dst_size = -1;
-      return;
-  }
+  std::vector<uint8_t> buffer(src_size + 0x160);
+  u8* dst = buffer.data();
   
   // write 4 bytes yaz0 header
   memcpy(dst, "Yaz0", 4);
@@ -200,5 +197,61 @@ yaz0_encode(u8 * src, int src_size, u8 *dst, int *dst_size )
   W32(dst + 4, src_size);
   
   //encode
-  *dst_size = yaz0_encode_internal(src, src_size, dst + 16);
+  int dst_size = yaz0_encode_internal(src, src_size, dst + 16);
+  int aligned_size = (dst_size + 31) & -16;
+  buffer.resize(dst_size);
+  return buffer;
+}
+
+void yaz0_decode(uint8_t* source, uint8_t* decomp, int32_t decompSize)
+{
+	uint32_t srcPlace = 0, dstPlace = 0;
+	uint32_t i, dist, copyPlace, numBytes;
+	uint8_t codeByte, byte1, byte2;
+	uint8_t bitCount = 0;
+
+	source += 0x10;
+	while(dstPlace < decompSize)
+	{
+		/* If there are no more bits to test, get a new byte */
+		if(!bitCount)
+		{
+			codeByte = source[srcPlace++];
+			bitCount = 8;
+		}
+
+		/* If bit 7 is a 1, just copy 1 byte from source to destination */
+		/* Else do some decoding */
+		if(codeByte & 0x80)
+		{
+			decomp[dstPlace++] = source[srcPlace++];
+		}
+		else
+		{
+			/* Get 2 bytes from source */
+			byte1 = source[srcPlace++];
+			byte2 = source[srcPlace++];
+
+			/* Calculate distance to move in destination */
+			/* And the number of bytes to copy */
+			dist = ((byte1 & 0xF) << 8) | byte2;
+			copyPlace = dstPlace - (dist + 1);
+			numBytes = byte1 >> 4;
+
+			/* Do more calculations on the number of bytes to copy */
+			if(!numBytes)
+				numBytes = source[srcPlace++] + 0x12;
+			else
+				numBytes += 2;
+
+			/* Copy data from a previous point in destination */
+			/* to current point in destination */
+			for(i = 0; i < numBytes; i++)
+				decomp[dstPlace++] = decomp[copyPlace++];
+		}
+
+		/* Set up for the next read cycle */
+		codeByte = codeByte << 1;
+		bitCount--;
+	}
 }

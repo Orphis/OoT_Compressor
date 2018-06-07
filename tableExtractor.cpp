@@ -2,11 +2,17 @@
 #include <stdlib.h>
 #include <stdint.h>
 #include <unistd.h>
-#include "yaz0.c"
+#include <vector>
+
+#include "findtable.h"
+#include "rom.h"
 
 #define UINTSIZE 0x1000000
 #define COMPSIZE 0x2000000
-#define byteSwap(x, y) asm("bswap %%eax" : "=a"(x) : "a"(y))
+
+uint32_t byteSwap(uint32_t x) {
+	return __builtin_bswap32(x);
+}
 
 /* Structs */
 typedef struct
@@ -19,38 +25,34 @@ typedef struct
 table_t;
 
 /* Functions */
-uint32_t findTable();
-table_t getTableEnt();
+table_t getTableEnt(uint32_t);
 void errorCheck(int, char**);
 
 /* Globals */
-uint8_t* inROM;
+std::vector<uint8_t> inROM;
 uint32_t* fileTab;
 
 int main(int argc, char** argv)
 {
 	FILE* file;
 	int32_t tabStart, tabSize, tabCount, i;
-	uint8_t* refTab;
+	std::vector<uint8_t> refTab;
 	table_t tab;
 
 	errorCheck(argc, argv);
 
 	/* Open input, read into inROM */
-	file = fopen(argv[1], "rb");
-	inROM = malloc(COMPSIZE);
-	fread(inROM, COMPSIZE, 1, file);
-	fclose(file);
+	inROM = loadROM(argv[1]);
 
 	/* Find file table, write to fileTab */
-	tabStart = findTable();
-	fileTab = (uint32_t*)(inROM + tabStart);
+	tabStart = findTable(inROM);
+	fileTab = (uint32_t*)(inROM.data() + tabStart);
 	tab = getTableEnt(2);
 	tabSize = tab.endV - tab.startV;
 	tabCount = tabSize / 16;
 
 	/* Fill refTab with 1 for compressed, 0 otherwise */
-	refTab = malloc(tabCount);
+	refTab.resize(tabCount);
 	for(i = 0; i < tabCount; i++)
 	{
 		tab = getTableEnt(i);
@@ -59,62 +61,20 @@ int main(int argc, char** argv)
 
 	/* Write fileTab to table.bin */	
 	file = fopen("table.txt", "w");
-	fwrite(refTab, tabCount, 1, file);
+	fwrite(refTab.data(), tabCount, 1, file);
 	fclose(file);
-	free(inROM);
-	free(refTab);
 	
-	return(0);
-}
-
-uint32_t findTable()
-{
-	uint32_t i, temp;
-	uint32_t* tempROM;
-
-	i = 0;
-	tempROM = (uint32_t*)inROM;
-
-	while(i+4 < UINTSIZE)
-	{
-		/* This marks the begining of the filetable */
-		byteSwap(temp, tempROM[i]);
-		if(temp == 0x7A656C64)
-		{
-			byteSwap(temp, tempROM[i+1]);
-			if(temp == 0x61407372)
-			{
-				byteSwap(temp, tempROM[i+2]);
-				if((temp & 0xFF000000) == 0x64000000)
-				{
-					/* Find first entry in file table */
-					i += 8;
-					byteSwap(temp, tempROM[i]);
-					while(temp != 0x00001060)
-					{
-						i += 4;
-						byteSwap(temp, tempROM[i]);
-					}
-					return((i-4) * sizeof(uint32_t));
-				}
-			}
-		}
-
-		i += 4;
-	}
-
-	fprintf(stderr, "Error: Couldn't find file table\n");
-	exit(1);
+	return 0;
 }
 
 table_t getTableEnt(uint32_t i)
 {
 	table_t tab;
 
-	byteSwap(tab.startV, fileTab[i*4]);
-	byteSwap(tab.endV,   fileTab[(i*4)+1]);
-	byteSwap(tab.startP, fileTab[(i*4)+2]);
-	byteSwap(tab.endP,   fileTab[(i*4)+3]);
+	tab.startV = byteSwap(fileTab[i*4]);
+	tab.endV = byteSwap(fileTab[(i*4)+1]);
+	tab.startP = byteSwap(fileTab[(i*4)+2]);
+	tab.endP = byteSwap(fileTab[(i*4)+3]);
 
 	return(tab);
 }
