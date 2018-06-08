@@ -1,18 +1,17 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <stdint.h>
-#include <unistd.h>
 #include <string.h>
 #include <vector>
 
 #include "ThreadPool.h"
 #include "findtable.h"
+#include "util.h"
 #include "yaz0.h"
 
 #define UINTSIZE 0x1000000
 #define COMPSIZE 0x2000000
 #define DCMPSIZE 0x4000000
-#define byteSwap(x, y) asm("bswap %%eax" : "=a"(x) : "a"(y))
 
 void fix_crc(char *);
 
@@ -113,7 +112,7 @@ int main(int argc, char** argv)
 	{
 		printf("~%d threads remaining\n", numThreads.load());
 		fflush(stdout);
-		sleep(5);
+        std::this_thread::sleep_for(std::chrono::seconds(5));
 	}
 
 	/* Setup for copying to outROM */
@@ -138,10 +137,10 @@ int main(int argc, char** argv)
 			if(out[i].comp)
 				tab.endP = tab.startP + out[i].data.size();
 			memcpy(outROM.data() + tab.startP, out[i].data.data(), out[i].data.size());
-			byteSwap(tab.startV, tab.startV);
-			byteSwap(tab.endV, tab.endV);
-			byteSwap(tab.startP, tab.startP);
-			byteSwap(tab.endP, tab.endP);
+            tab.startV = byteSwap(tab.startV);
+			tab.endV   = byteSwap(tab.endV);
+			tab.startP = byteSwap(tab.startP);
+			tab.endP   = byteSwap(tab.endP);
 			memcpy(outROM.data() + tabStart, &tab, sizeof(table_t));
 		}
 
@@ -179,10 +178,10 @@ int main(int argc, char** argv)
 
 void getTableEnt(table_t* tab, uint32_t* files, uint32_t i)
 {
-	byteSwap(tab->startV, files[i*4]);
-	byteSwap(tab->endV,   files[(i*4)+1]);
-	byteSwap(tab->startP, files[(i*4)+2]);
-	byteSwap(tab->endP,   files[(i*4)+3]);
+	tab->startV = byteSwap(files[i*4]);
+	tab->endV   = byteSwap(files[(i*4)+1]);
+	tab->startP = byteSwap(files[(i*4)+2]);
+	tab->endP   = byteSwap(files[(i*4)+3]);
 }
 
 void thread_func(args_t a)

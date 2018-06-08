@@ -1,18 +1,14 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <stdint.h>
-#include <unistd.h>
 #include <vector>
 
 #include "findtable.h"
 #include "rom.h"
+#include "util.h"
 
 #define UINTSIZE 0x1000000
 #define COMPSIZE 0x2000000
-
-uint32_t byteSwap(uint32_t x) {
-	return __builtin_bswap32(x);
-}
 
 /* Structs */
 typedef struct
@@ -42,6 +38,7 @@ int main(int argc, char** argv)
 	errorCheck(argc, argv);
 
 	/* Open input, read into inROM */
+	N64ROM inputROM(argv[1]);
 	inROM = loadROM(argv[1]);
 
 	/* Find file table, write to fileTab */

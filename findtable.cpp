@@ -3,18 +3,14 @@
 #include <stdio.h>
 #include <stdint.h>
 
+#include "util.h"
+
 #define UINTSIZE 0x1000000
 #define COMPSIZE 0x2000000
 
-inline uint32_t byteSwap(uint32_t x) {
-	return __builtin_bswap32(x);
-}
 
 uint32_t findTable(const std::vector<uint8_t>& inROM)
 {
-	uint32_t i, temp;
-	uint32_t* tempROM;
-
 	std::vector<uint8_t> marker{0x7A, 0x65, 0x6C, 0x64, 0x61, 0x40, 0x73, 0x72, 0x64};
 	auto it = std::search(inROM.begin(), inROM.end(), marker.begin(), marker.end());
 	
@@ -35,6 +31,6 @@ uint32_t findTable(const std::vector<uint8_t>& inROM)
 		it += 16;
 	} while(final_position < inROM.end());
 
-	return final_position - inROM.begin() - 4;
+	return static_cast<uint32_t>(final_position - inROM.begin() - 4);
 }
 
