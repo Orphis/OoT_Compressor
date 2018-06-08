@@ -37,7 +37,6 @@ uint32_t* outTable;
 
 int main(int argc, char** argv)
 {
-    _CrtCheckMemory();
 	FILE* outFile;
 	int32_t tabStart, tabSize, tabCount;
 	int32_t size, i;
@@ -81,19 +80,11 @@ int main(int argc, char** argv)
 	}
 
 	/* Write the new ROM */
-	size = strlen(argv[1]);
-	name = (char*)malloc(size + 7);
-	strcpy(name, argv[1]);
-	for(i = size; i >= 0; i--)
-	{
-		if(name[i] == '.')
-		{
-			name[i] = '\0';
-			break;
-		}
-	}
-	strcat(name, "-decomp.z64");
-	outFile = fopen(name, "wb");
+	std::string filename(argv[1]);
+	auto ext = filename.find_last_of('.');
+	std::string outname = filename.substr(0, ext) + "-decomp.z64";
+
+	outFile = fopen(outname.c_str(), "wb");
 	fwrite(outROM.data(), 1, DCMPSIZE, outFile);
 	fclose(outFile);
 

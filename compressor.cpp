@@ -151,21 +151,11 @@ int main(int argc, char** argv)
 	out.clear();
 
 	/* Make and fill the output ROM */
-	i = 0;
-	size = strlen(argv[1]);
-	name = (char*)malloc(size + 5);
-	strcpy(name, argv[1]);
-	while(i < size)
-	{
-		if(name[i] == '.')
-		{
-			name[i] = '\0';
-			break;
-		}
-		i++;
-	}
-	strcat(name, "-comp.z64");
-	file = fopen(name, "wb");
+	std::string filename(argv[1]);
+	auto ext = filename.find_last_of('.');
+	std::string outname = filename.substr(0, ext) + "-comp.z64";
+
+	file = fopen(outname.c_str(), "wb");
 	fwrite(outROM.data(), COMPSIZE, 1, file);
 	fclose(file);
 
