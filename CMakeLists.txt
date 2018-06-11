@@ -1,7 +1,7 @@
 cmake_minimum_required(VERSION 3.0)
 project(OoT_Compressor)
 
-set(CMAKE_CXX_STANDARD 14)
+set(CMAKE_CXX_STANDARD 17)
 
 add_compile_options($<$<C_COMPILER_ID:Clang>:-fcolor-diagnostics>)
 add_compile_options($<$<C_COMPILER_ID:GNU>:-fdiagnostics-color=always>)
@@ -35,12 +35,5 @@ add_executable(decompressor
     decompressor.cpp
 )
 target_link_libraries(decompressor
-    util
-)
-
-add_executable(table_extractor
-    tableExtractor.cpp
-)
-target_link_libraries(table_extractor
     util
 )

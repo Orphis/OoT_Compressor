@@ -1,7 +1,7 @@
+#include <stdint.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
-#include <stdint.h>
 #include <vector>
 
 #include "findtable.h"
@@ -13,108 +13,67 @@
 #define COMPSIZE 0x02000000
 #define DCMPSIZE 0x04000000
 
-void fix_crc(char *);
+void decompress(const std::string& name, const std::string& outname);
 
-/* Structs */
-typedef struct
-{
-	uint32_t startV;   /* Start Virtual Address  */
-	uint32_t endV;     /* End Virtual Address    */
-	uint32_t startP;   /* Start Physical Address */
-	uint32_t endP;     /* End Phycical Address   */
-}
-table_t;
+int main(int argc, char** argv) {
+  if (argc != 2 && argc != 3) {
+    fprintf(stderr, "Usage: %s file [outfile]", argv[0]);
+    exit(1);
+  }
 
-/* Functions */
-table_t getTabEnt(uint32_t);
-void setTabEnt(uint32_t, table_t);
+  std::string name = argv[1];
+  std::string outname =
+      argc == 3 ? argv[2]
+                : (name.substr(0, name.find_last_of('.')) + "-decomp.z64");
 
-/* Globals */
-std::vector<uint8_t> inROM;
-std::vector<uint8_t> outROM;
-uint32_t* inTable;
-uint32_t* outTable;
+  decompress(name, outname);
 
-int main(int argc, char** argv)
-{
-	FILE* outFile;
-	int32_t tabStart, tabSize, tabCount;
-	int32_t size, i;
-	table_t tab, tempTab;
-	char* name;
-
-	inROM.resize(DCMPSIZE);
-	outROM.resize(DCMPSIZE);
-
-	/* Load the ROM into inROM and outROM */
-	inROM = loadROM(argv[1]);
-	outROM = inROM;
-
-	/* Find table offsets */
-	tabStart = findTable(inROM);
-	inTable = (uint32_t*)(inROM.data() + tabStart);
-	outTable = (uint32_t*)(outROM.data() + tabStart);
-	tab = getTabEnt(2);
-	printf("tab2: %08x %08x %08x %08x\n", tab.startV, tab.endV, tab.startP, tab.endP);
-	tabSize = tab.endV - tab.startV;
-	tabCount = tabSize / 16;
-
-	/* Set everything past the table in outROM to 0 */
-	memset(outROM.data() + tab.endV, 0, DCMPSIZE - tab.endV);
-
-	for(i = 3; i < tabCount; i++)
-	{
-		tempTab = getTabEnt(i);
-		size = tempTab.endV - tempTab.startV;
-
-		/* Copy if decoded, decode if encoded */
-		if(tempTab.endP == 0x00000000)
-			memcpy(outROM.data() + tempTab.startV, inROM.data() + tempTab.startP, size);
-		else
-			yaz0_decode(inROM.data() + tempTab.startP, outROM.data() + tempTab.startV, size);
-
-		/* Clean up outROM's table */
-		tempTab.startP = tempTab.startV;
-		tempTab.endP = 0x00000000;
-		setTabEnt(i, tempTab);
-	}
-
-	/* Write the new ROM */
-	std::string filename(argv[1]);
-	auto ext = filename.find_last_of('.');
-	std::string outname = filename.substr(0, ext) + "-decomp.z64";
-
-	outFile = fopen(outname.c_str(), "wb");
-	fwrite(outROM.data(), 1, DCMPSIZE, outFile);
-	fclose(outFile);
-
-	/* I have no idea what's going on with this. I think it's just Nintendo magic */
-	fix_crc(name);
-	free(name);
-
-	return 0;
+  return 0;
 }
 
-table_t getTabEnt(uint32_t i)
-{
-	table_t tab;
+void decompress(const std::string& name, const std::string& outname) {
+  N64ROM rom(name);
 
-	/* First 32 bytes are VROM start address, next 32 are VROM end address */
-	/* Next 32 bytes are Physical start address, last 32 are Physical end address */
-    tab.startV = byteSwap(inTable[i*4]);
-    tab.endV   = byteSwap(inTable[(i*4)+1]);
-    tab.startP = byteSwap(inTable[(i*4)+2]);
-    tab.endP   = byteSwap(inTable[(i*4)+3]);
+  std::vector<uint8_t> compression_index(rom.entry_count());
 
-	return tab;
-}
+  const size_t first_file = 3;
+  uint32_t last_endv;
 
-void setTabEnt(uint32_t i, table_t tab)
-{
-	/* First 32 bytes are VROM start address, next 32 are VROM end address */
-	/* Next 32 bytes are Physical start address, last 32 are Physical end address */
-	outTable[i*4]     = byteSwap(tab.startV);
-	outTable[(i*4)+1] = byteSwap(tab.endV);
-	outTable[(i*4)+2] = byteSwap(tab.startP);
-	outTable[(i*4)+3] = byteSwap(tab.endP);
+  // Set everything from the first file we copy to the end to 0
+  memset(rom.out().data() + rom.inEntry(first_file).startP, 0,
+         DCMPSIZE - rom.inEntry(first_file).startP);
+
+  for (size_t i = first_file; i < rom.entry_count(); ++i) {
+    auto entry = rom.inEntry(i);
+    auto& outentry = rom.outEntry(i);
+    auto& outpreventry = rom.outEntry(i - 1);
+
+    // Dummy entry, skip it!
+    if (!entry.endV) continue;
+
+    if (entry.is_compressed()) {
+      yaz0_decode(rom.in().data() + entry.startP,
+                  rom.out().data() + entry.startV, entry.size());
+      compression_index[i] = 1;
+    } else {
+      memcpy(rom.out().data() + entry.startV, rom.in().data() + entry.startP,
+             entry.size());
+    }
+
+    last_endv = entry.endV;
+    outentry.startP = entry.startV;
+    outentry.endP = 0;
+  }
+
+  // Write the list of compressed entries at the back of the decompressed file
+  // for later recompression
+  auto& compression_index_entry = rom.outEntry(rom.entry_count() - 1);
+  compression_index_entry.startP = last_endv;
+  memcpy(rom.out().data() + last_endv, compression_index.data(),
+         compression_index.size());
+
+  rom.writeTable();
+  rom.fix_crc();
+
+  rom.save(outname);
 }
