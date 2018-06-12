@@ -2,6 +2,8 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <unordered_map>
+#include <list>
 #include "readwrite.h"
 #include "tables.h"
 
@@ -84,17 +86,17 @@ u32 nintendoEnc(const u8* src, int size, int pos, u32* pMatchPos, u32* numBytes1
 }
 
 int yaz0_encode_internal(const u8* src, int srcSize, u8* Data) {
-  u8 dst[24];  // 8 codes * 3 bytes maximum
-  int dstSize = 0;
   int i;
-  int pos = 0;
-  int srcPos = 0, dstPos = 0;
+  int srcPos = 0;
 
   u32 numBytes1, matchPos2;
   int prevFlag = 0;
 
-  u32 validBitCount = 0;  // number of valid bits left in "code" byte
+  int bitmask = 0x80;
   u8 currCodeByte = 0;
+  int currCodeBytePos = 0;
+  int pos = currCodeBytePos + 1;
+
   while (srcPos < srcSize) {
     u32 numBytes;
     u32 matchPos;
@@ -103,62 +105,53 @@ int yaz0_encode_internal(const u8* src, int srcSize, u8* Data) {
     numBytes = nintendoEnc(src, srcSize, srcPos, &matchPos, &numBytes1,
                            &matchPos2, &prevFlag);
     if (numBytes < 3) {
-      // straight copy
-      dst[dstPos] = src[srcPos];
-      dstPos++;
-      srcPos++;
-      // set flag for straight copy
-      currCodeByte |= (0x80 >> validBitCount);
+      Data[pos++] = src[srcPos++];
+      currCodeByte |= bitmask;
     } else {
       // RLE part
       u32 dist = srcPos - matchPos - 1;
-      u8 byte1, byte2, byte3;
 
       if (numBytes >= 0x12)  // 3 byte encoding
       {
-        byte1 = 0 | (dist >> 8);
-        byte2 = dist & 0xff;
-        dst[dstPos++] = byte1;
-        dst[dstPos++] = byte2;
-        // maximum runlength for 3 byte encoding
-        if (numBytes > 0xff + 0x12) numBytes = 0xff + 0x12;
-        byte3 = numBytes - 0x12;
-        dst[dstPos++] = byte3;
+        Data[pos++] = dist >> 8; // 0R
+        Data[pos++] = dist & 0xFF; // FF
+	if (numBytes > 0xFF + 0x12) numBytes = 0xFF + 0x12;
+        Data[pos++] = numBytes - 0x12;
       } else  // 2 byte encoding
       {
-        byte1 = ((numBytes - 2) << 4) | (dist >> 8);
-        byte2 = dist & 0xff;
-        dst[dstPos++] = byte1;
-        dst[dstPos++] = byte2;
+        Data[pos++] = ((numBytes - 2) << 4) | (dist >> 8);
+        Data[pos++] = dist & 0xFF;
       }
       srcPos += numBytes;
     }
-    validBitCount++;
+    bitmask >>= 1;
     // write eight codes
-    if (validBitCount == 8) {
-      Data[pos] = currCodeByte;
-      pos++;
-      for (i = 0; i < /*=*/dstPos; pos++, i++) Data[pos] = dst[i];
-      dstSize += dstPos + 1;
+    if (!bitmask) {
+      Data[currCodeBytePos] = currCodeByte;
+      currCodeBytePos = pos++;
 
       srcPosBak = srcPos;
       currCodeByte = 0;
-      validBitCount = 0;
-      dstPos = 0;
+      bitmask = 0x80;
     }
   }
-  if (validBitCount > 0) {
-    Data[pos] = currCodeByte;
-    pos++;
-    for (i = 0; i < /*=*/dstPos; pos++, i++) Data[pos] = dst[i];
-    dstSize += dstPos + 1;
-
-    currCodeByte = 0;
-    validBitCount = 0;
-    dstPos = 0;
+  if (bitmask) {
+    Data[currCodeBytePos] = currCodeByte;
   }
 
-  return dstSize;
+  return pos;
+}
+
+std::vector<uint8_t> yaz0_encode_fast(const u8* src, int src_size) {
+  std::vector<uint8_t> buffer;
+  std::vector<std::list<uint32_t>> lut;
+  lut.resize(0x1000000);
+
+  for (int i = 0; i < src_size - 3; ++i) {
+    lut[src[i + 0] << 16 | src[i + 1] << 8 | src[i + 2]].push_back(i);
+  }
+
+  return buffer;
 }
 
 std::vector<uint8_t> yaz0_encode(const u8* src, int src_size) {
@@ -174,7 +167,11 @@ std::vector<uint8_t> yaz0_encode(const u8* src, int src_size) {
   // encode
   int dst_size = yaz0_encode_internal(src, src_size, dst + 16);
   int aligned_size = (dst_size + 31) & -16;
-  buffer.resize(dst_size);
+  buffer.resize(aligned_size);
+ /* 
+  std::vector<uint8_t> buffer(16);
+  auto buffer2 = yaz0_encode_fast(src, src_size);*/
+
   return buffer;
 }
 

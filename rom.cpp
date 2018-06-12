@@ -28,39 +28,29 @@ void N64ROM::load() {
 }
 
 std::vector<uint8_t> loadROM(const std::string& name) {
-  uint32_t size, i;
-  uint16_t* tempROM;
-  FILE* romFile;
-  std::vector<uint8_t> inROM;
+  std::vector<uint8_t> result;
 
-  /* Open file, make sure it exists */
-  romFile = fopen(name.c_str(), "rb");
-  if (romFile == NULL) {
+  std::ifstream romFile(name, std::ifstream::binary);
+  if (!romFile) {
     perror(name.c_str());
     exit(1);
   }
-  /* Find size of file */
-  fseek(romFile, 0, SEEK_END);
-  size = ftell(romFile);
-  fseek(romFile, 0, SEEK_SET);
 
-  /* If it's not the right size, exit */
-  if (size != COMPSIZE) {
-    fprintf(stderr, "Error, %s is not the correct size", name.c_str());
-    exit(1);
+  romFile.seekg(0, std::ios::end);
+  size_t size = romFile.tellg();
+  romFile.seekg(0, std::ios::beg);
+
+  result.resize(size);
+  romFile.read(reinterpret_cast<char*>(result.data()), size);
+
+  uint16_t* tempROM = reinterpret_cast<uint16_t*>(result.data());
+  if (result[0] == 0x37) {
+    for (size_t i = 0; i < result.size() / 2; i++) {
+      tempROM[i] = byteSwap(tempROM[i]);
+    }
   }
 
-  inROM.resize(size);
-  /* Read to inROM, close romFile, and copy to outROM */
-  fread(inROM.data(), sizeof(char), size, romFile);
-  tempROM = (uint16_t*)inROM.data();
-  fclose(romFile);
-
-  /* bSwap_32 if needed */
-  if (inROM[0] == 0x37)
-    for (i = 0; i < UINTSIZE; i++) tempROM[i] = byteSwap(tempROM[i]);
-
-  return inROM;
+  return result;
 }
 
 size_t N64ROM::findTable() {
@@ -109,31 +99,12 @@ void N64ROM::writeTable() {
 }
 
 void N64ROM::save(const std::string& file_name) {
+  writeTable();
+  fix_crc();
+
   std::ofstream os(file_name, std::ofstream::out | std::ofstream::binary | std::ofstream::trunc);
   os.write(reinterpret_cast<const char*>(outdata.data()), outdata.size());
 }
 
 void N64ROM::fix_crc() { ::fix_crc(outdata); }
 
-const char* N64ROM::oot_us_v1_0_index =
-    "00000000001111100000000000011111111111111111111111111111111111111111111111"
-    "11111111111111111111111111111111111111111111111111111111111111111111111111"
-    "11111111111111111111111111111111111111111111111111111111111111111111111111"
-    "11111111111111111111111111111111111111111111111111111111111111111111111111"
-    "11111111111111111111111111111111111111111111111111111111111111111111111111"
-    "11111111111111111111111111111111111111111111111111111111111111111111111111"
-    "11111111111111111111111111111111111111111111111111111111111111111111111111"
-    "11111111111111111111111111111111111111111111111111111111111111111111111111"
-    "11111111111111111111111111111111111111111111111111111111111111111111111111"
-    "11111111111111111111111111111111111111111111111111111111111111111111111111"
-    "11111111111111111111111111111111111111111111111111111111111111111111111111"
-    "11111111111111111111111111111111111111111111111111111111111111111111111111"
-    "11111111111111111111111111111111111111111111111111111101010101010101010101"
-    "01010101010101010101010101010101010101010101111111111111111111111111111111"
-    "11111111111111111111111111111111111111111111111111111111111111111111111111"
-    "11111111111111111111111111111111111111111111111111111111111111111111111111"
-    "11111111111111111111111111111111111111111111111111111111111111111111111111"
-    "11111111111111111111111111111111111111111111111111111111111111111111111111"
-    "11111111111111111111111111111111111111111111111111111111111111111111111111"
-    "11111111111111111111111111111111111111111111111111111111111111111111111111"
-    "1111111111111111111111111111110000000000000000";

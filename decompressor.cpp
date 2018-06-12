@@ -18,7 +18,7 @@ void decompress(const std::string& name, const std::string& outname);
 int main(int argc, char** argv) {
   if (argc != 2 && argc != 3) {
     fprintf(stderr, "Usage: %s file [outfile]", argv[0]);
-    exit(1);
+    return 1;
   }
 
   std::string name = argv[1];
@@ -71,9 +71,6 @@ void decompress(const std::string& name, const std::string& outname) {
   compression_index_entry.startP = last_endv;
   memcpy(rom.out().data() + last_endv, compression_index.data(),
          compression_index.size());
-
-  rom.writeTable();
-  rom.fix_crc();
 
   rom.save(outname);
 }
