@@ -11,7 +11,8 @@ class N64ROM {
   struct table_entry {
     table_entry(const std::vector<uint8_t>& data, size_t pos) {
       static_assert(sizeof(table_entry) == 16);
-      const uint32_t* data32 = reinterpret_cast<const uint32_t*>(data.data() + pos);
+      const uint32_t* data32 =
+          reinterpret_cast<const uint32_t*>(data.data() + pos);
       startV = bigendian(data32[0]);
       endV = bigendian(data32[1]);
       startP = bigendian(data32[2]);

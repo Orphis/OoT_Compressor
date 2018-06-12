@@ -2,8 +2,8 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
-#include <unordered_map>
 #include <list>
+#include <unordered_map>
 #include "readwrite.h"
 #include "tables.h"
 
@@ -15,7 +15,8 @@ typedef uint32_t u32;
 
 /* internal declarations */
 u32 simpleEnc(const u8* src, int size, int pos, u32* pMatchPos);
-u32 nintendoEnc(const u8* src, int size, int pos, u32* pMatchPos, u32*, u32*, int*);
+u32 nintendoEnc(const u8* src, int size, int pos, u32* pMatchPos, u32*, u32*,
+                int*);
 int yaz0_encode_internal(const u8* src, int srcSize, u8* Data);
 
 int yaz0_get_size(u8* src) { return U32(src + 0x4); }
@@ -54,8 +55,8 @@ u32 simpleEnc(const u8* src, int size, int pos, u32* pMatchPos) {
 }
 
 // a lookahead encoding scheme for ngc Yaz0
-u32 nintendoEnc(const u8* src, int size, int pos, u32* pMatchPos, u32* numBytes1,
-                u32* matchPos, int* prevFlag) {
+u32 nintendoEnc(const u8* src, int size, int pos, u32* pMatchPos,
+                u32* numBytes1, u32* matchPos, int* prevFlag) {
   u32 numBytes = 1;
 
   // if prevFlag is set, it means that the previous position was determined by
@@ -113,9 +114,9 @@ int yaz0_encode_internal(const u8* src, int srcSize, u8* Data) {
 
       if (numBytes >= 0x12)  // 3 byte encoding
       {
-        Data[pos++] = dist >> 8; // 0R
-        Data[pos++] = dist & 0xFF; // FF
-	if (numBytes > 0xFF + 0x12) numBytes = 0xFF + 0x12;
+        Data[pos++] = dist >> 8;    // 0R
+        Data[pos++] = dist & 0xFF;  // FF
+        if (numBytes > 0xFF + 0x12) numBytes = 0xFF + 0x12;
         Data[pos++] = numBytes - 0x12;
       } else  // 2 byte encoding
       {
@@ -168,9 +169,9 @@ std::vector<uint8_t> yaz0_encode(const u8* src, int src_size) {
   int dst_size = yaz0_encode_internal(src, src_size, dst + 16);
   int aligned_size = (dst_size + 31) & -16;
   buffer.resize(aligned_size);
- /* 
-  std::vector<uint8_t> buffer(16);
-  auto buffer2 = yaz0_encode_fast(src, src_size);*/
+  /*
+   std::vector<uint8_t> buffer(16);
+   auto buffer2 = yaz0_encode_fast(src, src_size);*/
 
   return buffer;
 }

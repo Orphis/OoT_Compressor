@@ -20,10 +20,13 @@ void compression_thread(const uint8_t* data, size_t size,
 
 int cpu_count() {
   int n = std::thread::hardware_concurrency();
-  switch(n) {
-  case 0: return 2;
-  case 1: return 3;
-  default: return n + 2;
+  switch (n) {
+    case 0:
+      return 2;
+    case 1:
+      return 3;
+    default:
+      return n + 2;
   }
 }
 
@@ -55,7 +58,8 @@ void compress(const std::string& name, const std::string& outname) {
     const auto& entry = rom.inEntry(i);
     numThreads++;
     pool.enqueue(compression_thread, rom.in().data() + entry.startP,
-                 entry.size(), std::ref(compressed_data[i]), std::ref(numThreads));
+                 entry.size(), std::ref(compressed_data[i]),
+                 std::ref(numThreads));
   }
 
   printf("Compressing %d files\n", numThreads.load());

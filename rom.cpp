@@ -102,9 +102,9 @@ void N64ROM::save(const std::string& file_name) {
   writeTable();
   fix_crc();
 
-  std::ofstream os(file_name, std::ofstream::out | std::ofstream::binary | std::ofstream::trunc);
+  std::ofstream os(file_name, std::ofstream::out | std::ofstream::binary |
+                                  std::ofstream::trunc);
   os.write(reinterpret_cast<const char*>(outdata.data()), outdata.size());
 }
 
 void N64ROM::fix_crc() { ::fix_crc(outdata); }
-
