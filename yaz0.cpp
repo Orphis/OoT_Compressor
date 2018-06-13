@@ -32,6 +32,8 @@ u32 longest_match_brute(const u8* src, int size, int pos, u32* pMatchPos) {
   u32 best_match_size = 0;
   u32 best_match_pos = 0;
 
+  if (max_match_size < 3) return 0;
+
   if (startPos < 0) startPos = 0;
 
   if (max_match_size > 0x111) max_match_size = 0x111;
@@ -53,6 +55,42 @@ u32 longest_match_brute(const u8* src, int size, int pos, u32* pMatchPos) {
   return best_match_size;
 }
 
+u32 longest_match_rabinkarp(const u8* src, int size, int pos, u32* match_pos) {
+  int startPos = pos - 0x1000;
+  int max_match_size = size - pos;
+  u32 best_match_size = 0;
+  u32 best_match_pos = 0;
+
+  if (max_match_size < 3) return 0;
+
+  if (startPos < 0) startPos = 0;
+
+  if (max_match_size > 0x111) max_match_size = 0x111;
+
+  int find_hash = src[pos] << 16 | src[pos + 1] << 8 | src[pos + 2];
+  int current_hash = src[startPos] << 16 | src[startPos + 1] << 8 | src[startPos + 2];
+
+  for (int i = startPos; i < pos; i++) {
+    if(current_hash == find_hash) {
+      int current_size;
+      for (current_size = 3; current_size < max_match_size; current_size++) {
+        if (src[i + current_size] != src[pos + current_size]) {
+          break;
+        }
+      }
+      if (current_size > best_match_size) {
+        best_match_size = current_size;
+        best_match_pos = i;
+        if (best_match_size == 0x111) break;
+      }
+    }
+    current_hash = (current_hash << 8 | src[i + 3]) & 0xFFFFFF;
+  }
+  *match_pos = best_match_pos;
+
+  return best_match_size;
+}
+
 int yaz0_encode_internal(const u8* src, int srcSize, u8* Data) {
   int srcPos = 0;
 
@@ -65,7 +103,7 @@ int yaz0_encode_internal(const u8* src, int srcSize, u8* Data) {
     u32 numBytes;
     u32 matchPos;
 
-    numBytes = longest_match_brute(src, srcSize, srcPos, &matchPos);
+    numBytes = longest_match_rabinkarp(src, srcSize, srcPos, &matchPos);
     //fprintf(stderr, "pos %x len %x pos %x\n", srcPos, (int)numBytes, (int)matchPos);
     if (numBytes < 3) {
       //fprintf(stderr, "single byte %02x\n", src[srcPos]);
@@ -139,9 +177,6 @@ std::vector<uint8_t> yaz0_encode(const u8* src, int src_size) {
     fprintf(stderr, "Decompressed buffer is different from original\n");
   }
 #endif
-  /*
-   std::vector<uint8_t> buffer(16);
-   auto buffer2 = yaz0_encode_fast(src, src_size);*/
 
   return buffer;
 }
