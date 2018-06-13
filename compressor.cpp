@@ -11,7 +11,7 @@
 #define COMPSIZE 0x2000000
 #define DCMPSIZE 0x4000000
 
-void compression_thread(const uint8_t* data, size_t size,
+void compression_thread(const uint8_t* data, size_t size, size_t index,
                         std::vector<uint8_t>& out,
                         std::atomic<int>& thread_count) {
   out = yaz0_encode(data, size);
@@ -58,7 +58,7 @@ void compress(const std::string& name, const std::string& outname) {
     const auto& entry = rom.inEntry(i);
     numThreads++;
     pool.enqueue(compression_thread, rom.in().data() + entry.startP,
-                 entry.size(), std::ref(compressed_data[i]),
+                 entry.size(), i, std::ref(compressed_data[i]),
                  std::ref(numThreads));
   }
 
@@ -80,6 +80,7 @@ void compress(const std::string& name, const std::string& outname) {
     const auto& entry = rom.inEntry(i);
     auto& outentry = rom.outEntry(i);
 
+    if (!entry.startV) continue;
     outentry.startP = write_pointer;
 
     if (compression_index[i]) {
@@ -93,6 +94,7 @@ void compress(const std::string& name, const std::string& outname) {
       write_pointer += entry.size();
     }
   }
+  printf("Final size %zx bytes\n", write_pointer);
 
   rom.save(outname);
 }

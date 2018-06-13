@@ -5,7 +5,6 @@
 #include <list>
 #include <unordered_map>
 #include "readwrite.h"
-#include "tables.h"
 
 #include "yaz0.h"
 
@@ -14,9 +13,6 @@ typedef uint16_t u16;
 typedef uint32_t u32;
 
 /* internal declarations */
-u32 simpleEnc(const u8* src, int size, int pos, u32* pMatchPos);
-u32 nintendoEnc(const u8* src, int size, int pos, u32* pMatchPos, u32*, u32*,
-                int*);
 int yaz0_encode_internal(const u8* src, int srcSize, u8* Data);
 
 int yaz0_get_size(u8* src) { return U32(src + 0x4); }
@@ -30,68 +26,35 @@ u32 toDWORD(u32 d) {
 }
 
 // simple and straight encoding scheme for Yaz0
-u32 simpleEnc(const u8* src, int size, int pos, u32* pMatchPos) {
-  int startPos = pos - 0x1000, j, i;
-  int smp = size - pos;
-  u32 numBytes = 1;
-  u32 matchPos = 0;
+u32 longest_match_brute(const u8* src, int size, int pos, u32* pMatchPos) {
+  int startPos = pos - 0x1000;
+  int max_match_size = size - pos;
+  u32 best_match_size = 0;
+  u32 best_match_pos = 0;
 
   if (startPos < 0) startPos = 0;
 
-  if (smp > 0x111) smp = 0x111;
+  if (max_match_size > 0x111) max_match_size = 0x111;
 
-  for (i = startPos; i < pos; i++) {
-    for (j = 0; j < smp; j++) {
-      if (src[i + j] != src[j + pos]) break;
+  for (int i = startPos; i < pos; i++) {
+    int current_size;
+    for (current_size = 0; current_size < max_match_size; current_size++) {
+      if (src[i + current_size] != src[pos + current_size]) {
+	break;
+      }
     }
-    if (j > numBytes) {
-      numBytes = j;
-      matchPos = i;
-    }
-  }
-  *pMatchPos = matchPos;
-  if (numBytes == 2) numBytes = 1;
-  return numBytes;
-}
-
-// a lookahead encoding scheme for ngc Yaz0
-u32 nintendoEnc(const u8* src, int size, int pos, u32* pMatchPos,
-                u32* numBytes1, u32* matchPos, int* prevFlag) {
-  u32 numBytes = 1;
-
-  // if prevFlag is set, it means that the previous position was determined by
-  // look-ahead try. so just use it. this is not the best optimization, but
-  // nintendo's choice for speed.
-  if (*prevFlag == 1) {
-    *pMatchPos = *matchPos;
-    *prevFlag = 0;
-    return *numBytes1;
-  }
-  *prevFlag = 0;
-  numBytes = simpleEnc(src, size, pos, matchPos);
-  *pMatchPos = *matchPos;
-
-  // if this position is RLE encoded, then compare to copying 1 byte and next
-  // position(pos+1) encoding
-  if (numBytes >= 3) {
-    *numBytes1 = simpleEnc(src, size, pos + 1, matchPos);
-    // if the next position encoding is +2 longer than current position, choose
-    // it. this does not guarantee the best optimization, but fairly good
-    // optimization with speed.
-    if (*numBytes1 >= numBytes + 2) {
-      numBytes = 1;
-      *prevFlag = 1;
+    if (current_size > best_match_size) {
+      best_match_size = current_size;
+      best_match_pos = i;
+      if (best_match_size == 0x111) break;
     }
   }
-  return numBytes;
+  *pMatchPos = best_match_pos;
+  return best_match_size;
 }
 
 int yaz0_encode_internal(const u8* src, int srcSize, u8* Data) {
-  int i;
   int srcPos = 0;
-
-  u32 numBytes1, matchPos2;
-  int prevFlag = 0;
 
   int bitmask = 0x80;
   u8 currCodeByte = 0;
@@ -101,11 +64,11 @@ int yaz0_encode_internal(const u8* src, int srcSize, u8* Data) {
   while (srcPos < srcSize) {
     u32 numBytes;
     u32 matchPos;
-    u32 srcPosBak;
 
-    numBytes = nintendoEnc(src, srcSize, srcPos, &matchPos, &numBytes1,
-                           &matchPos2, &prevFlag);
+    numBytes = longest_match_brute(src, srcSize, srcPos, &matchPos);
+    //fprintf(stderr, "pos %x len %x pos %x\n", srcPos, (int)numBytes, (int)matchPos);
     if (numBytes < 3) {
+      //fprintf(stderr, "single byte %02x\n", src[srcPos]);
       Data[pos++] = src[srcPos++];
       currCodeByte |= bitmask;
     } else {
@@ -131,7 +94,6 @@ int yaz0_encode_internal(const u8* src, int srcSize, u8* Data) {
       Data[currCodeBytePos] = currCodeByte;
       currCodeBytePos = pos++;
 
-      srcPosBak = srcPos;
       currCodeByte = 0;
       bitmask = 0x80;
     }
@@ -156,7 +118,7 @@ std::vector<uint8_t> yaz0_encode_fast(const u8* src, int src_size) {
 }
 
 std::vector<uint8_t> yaz0_encode(const u8* src, int src_size) {
-  std::vector<uint8_t> buffer(src_size + 0x160);
+  std::vector<uint8_t> buffer(src_size * 10 / 8 + 16);
   u8* dst = buffer.data();
 
   // write 4 bytes yaz0 header
@@ -169,6 +131,14 @@ std::vector<uint8_t> yaz0_encode(const u8* src, int src_size) {
   int dst_size = yaz0_encode_internal(src, src_size, dst + 16);
   int aligned_size = (dst_size + 31) & -16;
   buffer.resize(aligned_size);
+
+#if 0
+  std::vector<uint8_t> decompressed(src_size);
+  yaz0_decode(buffer.data(), decompressed.data(), src_size);
+  if(memcmp(src, decompressed.data(), src_size)) {
+    fprintf(stderr, "Decompressed buffer is different from original\n");
+  }
+#endif
   /*
    std::vector<uint8_t> buffer(16);
    auto buffer2 = yaz0_encode_fast(src, src_size);*/
